@@ -1,19 +1,16 @@
 # Physarum Oracle 视觉 QA
 
-## 390×844
+## Evidence
 
-- AlterU 顶部壳存在时，标题与 HUD 均位于壳下方安全区。
-- 原作 Physarum 网络铺满画面且保持清晰，单指拖动会立即改变化学网络。
-- 重置按钮不与 HUD、顶部壳或底部隐藏操作说明重叠。
-- 控制台无 error / warning。
+- `_qa/ui/links-390x844-first-pass.png.png`：1/4 根信标与网络。
+- `_qa/ui/links-result-390x844-recheck.png.png`：连续轨迹连接四个信标后的 100% 网络。
+- `_qa/ui/narrow-320x568-recheck.png.png`：四信标、法则 HUD 与真实幽灵轨迹。
 
-## 320×568
+## Findings and recheck
 
-- 文档宽度与视口宽度均为 320 px，无横向溢出。
-- 标题、倒计时和生长度完整可读；底部署名在短屏隐藏以保护操作空间。
-- 粒子场可正常启动，画布未拉伸。
+- P1：旧倒计时与黏菌连网的视觉因果脱节。现由四个可见信标直接定义目标和结束。
+- 390×844 连续拖动可依次获得 `1/4 → 4/4`，1.2 秒生长后显示路径效率。
+- 320×568 无横向溢出，四个双环信标均在主要操作区且不与 HUD 重叠。
+- 静态 UI audit 无 Emoji 或图标违规；除 localhost guest-shell 资源外无脚本错误。
 
-## 海报
-
-- 1024×1024：平台 transit 生成的全幅生物网络底图，无设备框、手、播放按钮或 UI。
-- 160×160：标题与中心发光网络仍可辨认。
+最终评分：Hierarchy 4、Coherence 5、Readability 4、Game feel 5、Asset quality 5、Responsive UX 4、Polish 4，平均 4.43。

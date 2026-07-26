@@ -20,11 +20,12 @@ import './style.css'
 
 const app = document.querySelector('#app')
 const canvas = document.querySelector('#field')
-const timerEl = document.querySelector('#timer')
-const growthEl = document.querySelector('#growth')
+const linksEl = document.querySelector('#links')
+const lawEl = document.querySelector('#law')
 const demoEl = document.querySelector('#demo')
 const resultEl = document.querySelector('#result')
 const scoreEl = document.querySelector('#score')
+const efficiencyEl = document.querySelector('#efficiency')
 const resetButton = document.querySelector('#reset')
 const againButton = document.querySelector('#again')
 const retryButton = document.querySelector('#retry')
@@ -45,9 +46,16 @@ const PRESETS = [
   { name: 'Honeycomb', sensorDistance: 7.5, sensorAngle: 90, stepSize: 2, rotationAngle: -45 },
 ]
 const params = { decayFactor: 0.9, depositAmount: 4, particleDensity: innerWidth <= 430 ? 0.22 : 0.16, renderAmplitude: 0.03, ...PRESETS[0] }
-const ROUND_MS = 24000
 const COMPONENTS = 4
 const activePointers = new Map()
+const BEACONS = [
+  [0.24, 0.38],
+  [0.76, 0.33],
+  [0.68, 0.68],
+  [0.28, 0.73],
+]
+const beaconEls = [...document.querySelectorAll('.po__beacons i')]
+const linkedBeacons = new Set([0])
 
 let composer
 let particlePositions
@@ -61,16 +69,13 @@ let frameId = 0
 let resizeTimer = 0
 let isVisible = false
 let phase = 'idle'
-let startedAt = 0
-let pauseStarted = 0
-let pausedDuration = 0
-let lastSecond = 24
 let presetIndex = 0
 let pathDistance = 0
 let inputBursts = 0
 let demoProgress = 0
 let lastToneAt = 0
 let audioContext
+let completionTimer = 0
 
 function tone(freq, duration = 0.07, delay = 0, volume = 0.012) {
   try {
@@ -250,15 +255,19 @@ function resizeSimulation() {
 }
 
 function resetRound() {
+  clearTimeout(completionTimer)
   phase = 'idle'
-  startedAt = 0
-  pausedDuration = 0
   pathDistance = 0
   inputBursts = 0
   demoProgress = 0
-  lastSecond = 24
-  timerEl.textContent = '24'
-  growthEl.textContent = '00'
+  linkedBeacons.clear()
+  linkedBeacons.add(0)
+  linksEl.textContent = '1/4'
+  lawEl.textContent = PRESETS[presetIndex].name.toUpperCase()
+  beaconEls.forEach((element, index) => {
+    element.classList.toggle('po__beacon--linked', index === 0)
+    element.classList.remove('po__beacon--pulse')
+  })
   resultEl.hidden = true
   demoEl.hidden = false
   trail.clear()
@@ -279,34 +288,20 @@ function applyPreset() {
 function beginRound() {
   if (phase !== 'idle') return
   phase = 'running'
-  startedAt = performance.now()
   demoEl.hidden = true
   tone(180, 0.12)
 }
 
 function finishRound() {
-  if (phase !== 'running') return
+  if (phase !== 'settling') return
   phase = 'result'
-  const score = Math.min(999, Math.round(260 + Math.min(440, pathDistance * 0.35) + Math.min(299, inputBursts * 17)))
-  scoreEl.textContent = String(score).padStart(3, '0')
+  const efficiency = Math.min(100, Math.round((520 / Math.max(520, pathDistance)) * 100))
+  scoreEl.textContent = '100'
+  efficiencyEl.textContent = `PATH ${String(efficiency).padStart(2, '0')}% EFFICIENT`
   resultEl.hidden = false
   tone(220, 0.14)
   tone(330, 0.14, 0.1)
   tone(440, 0.18, 0.2)
-}
-
-function updateRound(now) {
-  if (phase !== 'running') return
-  const elapsed = now - startedAt - pausedDuration
-  const remaining = Math.max(0, ROUND_MS - elapsed)
-  const seconds = Math.ceil(remaining / 1000)
-  if (seconds !== lastSecond) {
-    lastSecond = seconds
-    timerEl.textContent = String(seconds).padStart(2, '0')
-    const growth = Math.min(99, Math.round((elapsed / ROUND_MS) * 72 + Math.min(27, pathDistance / 45)))
-    growthEl.textContent = String(growth).padStart(2, '0')
-  }
-  if (remaining <= 0) finishRound()
 }
 
 function injectPoint(point, diameter = 28) {
@@ -322,6 +317,39 @@ function eventPoint(event) {
   return [event.clientX - rect.left, rect.height - (event.clientY - rect.top)]
 }
 
+function beaconPoint(index) {
+  return [BEACONS[index][0] * canvas.width, (1 - BEACONS[index][1]) * canvas.height]
+}
+
+function distanceToSegment(point, from, to) {
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const lengthSquared = dx * dx + dy * dy
+  if (!lengthSquared) return Math.hypot(point[0] - from[0], point[1] - from[1])
+  const amount = Math.max(0, Math.min(1, ((point[0] - from[0]) * dx + (point[1] - from[1]) * dy) / lengthSquared))
+  return Math.hypot(point[0] - (from[0] + amount * dx), point[1] - (from[1] + amount * dy))
+}
+
+function activateBeacon(index) {
+  if (linkedBeacons.has(index) || phase === 'result') return
+  linkedBeacons.add(index)
+  linksEl.textContent = `${linkedBeacons.size}/4`
+  const element = beaconEls[index]
+  element.classList.add('po__beacon--linked', 'po__beacon--pulse')
+  setTimeout(() => element.classList.remove('po__beacon--pulse'), 480)
+  tone(280 + index * 80, 0.12, 0, 0.012)
+  if (linkedBeacons.size === BEACONS.length) {
+    phase = 'settling'
+    completionTimer = setTimeout(finishRound, 1200)
+  }
+}
+
+function checkBeacons(from, to = from) {
+  BEACONS.forEach((_, index) => {
+    if (!linkedBeacons.has(index) && distanceToSegment(beaconPoint(index), from, to) <= 42) activateBeacon(index)
+  })
+}
+
 canvas.addEventListener('pointerdown', (event) => {
   canvas.setPointerCapture(event.pointerId)
   activePointers.set(event.pointerId, eventPoint(event))
@@ -334,6 +362,7 @@ canvas.addEventListener('pointerdown', (event) => {
   beginRound()
   const point = eventPoint(event)
   injectPoint(point)
+  checkBeacons(point)
   inputBursts++
 })
 canvas.addEventListener('pointermove', (event) => {
@@ -342,6 +371,7 @@ canvas.addEventListener('pointermove', (event) => {
   const point = eventPoint(event)
   injectSegment(previous, point)
   pathDistance += Math.hypot(point[0] - previous[0], point[1] - previous[1])
+  checkBeacons(previous, point)
   activePointers.set(event.pointerId, point)
   if (performance.now() - lastToneAt > 130) {
     lastToneAt = performance.now()
@@ -375,7 +405,6 @@ function simulationStep(now) {
   composer.step({ program: diffuse, input: trail, output: trail })
   composer.step({ program: render, input: trail })
   demoSeed(now)
-  updateRound(now)
 }
 
 function loop(now) {
@@ -396,20 +425,8 @@ window.addEventListener('resize', () => {
   clearTimeout(resizeTimer)
   resizeTimer = setTimeout(() => resizeSimulation(), 180)
 })
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && phase === 'running') pauseStarted = performance.now()
-  if (!document.hidden && pauseStarted && phase === 'running') {
-    pausedDuration += performance.now() - pauseStarted
-    pauseStarted = 0
-  }
-})
 new IntersectionObserver(([entry]) => {
   const next = entry.isIntersecting && entry.intersectionRatio >= 0.35
-  if (!next && isVisible && phase === 'running') pauseStarted = performance.now()
-  if (next && !isVisible && pauseStarted && phase === 'running') {
-    pausedDuration += performance.now() - pauseStarted
-    pauseStarted = 0
-  }
   isVisible = next
 }, { threshold: [0, 0.35, 0.7] }).observe(app)
 
